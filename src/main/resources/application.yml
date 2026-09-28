@@ -1,0 +1,114 @@
+spring:
+  application:
+    name: payments-service
+  profiles:
+    active: dev
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/payments_db
+    username: payments_user
+    password: payments_pass
+    pool:
+      enabled: true
+      initial-size: 10
+      max-size: 20
+      max-idle-time: 30m
+      validation-query: SELECT 1
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          lob:
+            non_contextual_creation: true
+
+server:
+  port: 8080
+  shutdown: graceful
+  netty:
+    connection-timeout: 2s
+    idle-timeout: 15s
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        registerHealthIndicator: true
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 5s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        minimumNumberOfCalls: 5
+        eventConsumerBufferSize: 10
+    instances:
+      coreBankingService:
+        baseConfig: default
+        failureRateThreshold: 60
+        waitDurationInOpenState: 10s
+      fraudDetectionService:
+        baseConfig: default
+        failureRateThreshold: 40
+        waitDurationInOpenState: 8s
+      riskBureauService:
+        baseConfig: default
+        failureRateThreshold: 50
+        waitDurationInOpenState: 12s
+  retry:
+    configs:
+      default:
+        maxAttempts: 3
+        waitDuration: 1s
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - org.springframework.web.reactive.function.client.WebClientResponseException$InternalServerError
+          - java.util.concurrent.TimeoutException
+          - java.io.IOException
+    instances:
+      coreBankingService:
+        baseConfig: default
+      fraudDetectionService:
+        baseConfig: default
+      riskBureauService:
+        baseConfig: default
+  bulkhead:
+    configs:
+      default:
+        maxConcurrentCalls: 25
+        maxWaitDuration: 0
+    instances:
+      coreBankingService:
+        baseConfig: default
+      fraudDetectionService:
+        baseConfig: default
+      riskBureauService:
+        baseConfig: default
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: DEBUG
+    com.pragma.payments: DEBUG
+    io.r2dbc.postgresql.QUERY: DEBUG
+    io.r2dbc.postgresql.PARAM: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+  health:
+    circuitbreakers:
+      enabled: true
+    ratelimiters:
+      enabled: true
